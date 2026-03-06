@@ -16,6 +16,9 @@ const PIN_KEY = "almadar_pin_v1";
 const SESSION_KEY = "almadar_unlocked_v1";
 const UNLOCK_UNTIL_KEY = "almadar_unlocked_until_v1";
 
+// ✅ مهم: نخزن sku مؤقتاً حتى بعد إدخال PIN نعرض الخيارات الثلاث
+const PENDING_SKU_KEY = "almadar_pending_sku";
+
 function getPin(){ return localStorage.getItem(PIN_KEY) || ""; }
 function setPin(pin){ localStorage.setItem(PIN_KEY, pin); }
 function isUnlocked(){
@@ -154,6 +157,9 @@ function showPinGate(appHTML){
   }catch(e){}
 
   if(skuParam){
+    // ✅ خزّن sku مؤقتاً حتى لو طلب PIN
+    sessionStorage.setItem(PENDING_SKU_KEY, skuParam.toUpperCase());
+
     // إذا فتح من QR
     if(!getPin()){
       // بدون PIN: اعتبره زبون -> صفحة عامة
@@ -408,6 +414,7 @@ function renderCart(){
         <button class="btn danger" data-a="d">حذف</button>
       </div>
     `;
+
     el.querySelectorAll("button").forEach(b=>{
       b.onclick=()=>{
         const a=b.dataset.a;
@@ -857,17 +864,26 @@ async function refreshAll(){
   await refreshInvoices();
   renderCart(); calcTotals();
 }
+
 window.addEventListener("load", async ()=>{
   await refreshAll();
 
-  // إذا فتح من QR ومعه sku: افتح action modal
+  // ✅ فتح نافذة الخيارات الثلاث عند وجود SKU (حتى بعد PIN)
   try{
     const u = new URL(location.href);
-    const sku = (u.searchParams.get("sku")||"").trim().toUpperCase();
+    const urlSku = (u.searchParams.get("sku")||"").trim().toUpperCase();
+    const pendingSku = (sessionStorage.getItem(PENDING_SKU_KEY)||"").trim().toUpperCase();
+    const sku = urlSku || pendingSku;
+
     if(sku){
-      u.searchParams.delete("sku");
-      history.replaceState({}, "", u.toString());
-      setTimeout(()=> openActionPickerForSKU(sku), 200);
+      // نظف الرابط (اختياري)
+      if(urlSku){
+        u.searchParams.delete("sku");
+        history.replaceState({}, "", u.toString());
+      }
+      sessionStorage.removeItem(PENDING_SKU_KEY);
+
+      setTimeout(()=> openActionPickerForSKU(sku), 250);
     }
   }catch(e){}
 });
