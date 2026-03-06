@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>المدار للمخزون والمبيعات</title>
+  <meta name="theme-color" content="#f59e0b">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="title">المدار للمخزون والمبيعات</div>
+    <div class="subtitle">يدوي + QR + بيع + فاتورة A4 + سجل فواتير</div>
+  </div>
+
+  <div class="top-actions">
+    <button class="btn ghost" id="btnExport">تصدير Backup</button>
+    <label class="filebtn">
+      استرجاع
+      <input type="file" id="restoreFile" accept=".json">
+    </label>
+    <button class="btn" id="btnAddProduct">إضافة مادة</button>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="inventory">مخزون</button>
+  <button class="tab" data-tab="sales">بيع</button>
+  <button class="tab" data-tab="labels">ملصقات</button>
+  <button class="tab" data-tab="invoices">فواتير</button>
+  <button class="tab" data-tab="moves">حركات</button>
+  <button class="tab" data-tab="settings">إعدادات</button>
+</nav>
+
+<main class="container">
+  <!-- Inventory -->
+  <section class="panel show" id="tab-inventory">
+    <div class="card">
+      <div class="row">
+        <input id="invSearch" class="input" placeholder="بحث بالاسم أو الباركود..." />
+        <button class="btn" id="btnNewProduct2">إضافة مادة</button>
+      </div>
+      <div id="invList" class="list"></div>
+      <p class="hint">تقدر تشتغل بدون QR. لتفعيل QR من الكاميرا بشكل آمن، فعّل PIN من الإعدادات.</p>
+    </div>
+  </section>
+
+  <!-- Sales -->
+  <section class="panel" id="tab-sales">
+    <div class="card">
+      <div class="grid2">
+        <div>
+          <label>اسم الزبون</label>
+          <input id="customerName" class="input" placeholder="مثال: أبو علي" />
+        </div>
+        <div>
+          <label>محل السكن</label>
+          <input id="customerResidence" class="input" placeholder="مثال: النجف - ..." />
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-top:10px;">
+        <div>
+          <label>طريقة الدفع</label>
+          <select id="payType" class="input">
+            <option value="cash">نقدي</option>
+            <option value="credit">أجل</option>
+            <option value="transfer">تحويل</option>
+          </select>
+        </div>
+        <div>
+          <label>ملاحظة (اختياري)</label>
+          <input id="invoiceNote" class="input" placeholder="مثال: ضمان أسبوع" />
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <input id="saleQuery" class="input" placeholder="اكتب اسم المادة أو الصق/امسح QR (رابط)..." />
+        <button class="btn" id="saleAddBtn">إضافة للسلة</button>
+        <button class="btn danger" id="clearCart">تفريغ</button>
+      </div>
+
+      <div class="hint">ستظهر قائمة مختصرة أثناء البحث — اضغط على المادة لإضافتها.</div>
+      <div id="saleSuggest" class="list"></div>
+    </div>
+
+    <div class="card">
+      <h3 class="h3">السلة</h3>
+      <div id="cartList" class="list"></div>
+
+      <div class="grid2">
+        <div>
+          <label>خصم (دينار)</label>
+          <input id="discount" class="input" type="number" min="0" value="0"/>
+        </div>
+        <div>
+          <label>الإجمالي</label>
+          <div class="item" style="justify-content:space-between;">
+            <span class="badge">الصافي</span>
+            <b id="total">0</b>
+          </div>
+        </div>
+      </div>
+
+      <div class="row" style="justify-content:space-between;margin-top:10px;">
+        <div>الربح: <b id="profit">0</b></div>
+        <button class="btn" id="checkout">إنهاء البيع + طباعة فاتورة</button>
+      </div>
+      <p class="hint">الفاتورة تبقى معروضة وبها زر طباعة + مشاركة PDF.</p>
+    </div>
+  </section>
+
+  <!-- Labels -->
+  <section class="panel" id="tab-labels">
+    <div class="card">
+      <div class="row">
+        <input id="labelSearch" class="input" placeholder="ابحث بالاسم أو الباركود..." />
+        <button class="btn" id="printSheet">طباعة ورقة A4 (QR)</button>
+      </div>
+
+      <div class="grid2" style="margin-top:10px;">
+        <div>
+          <label>حجم QR (سم)</label>
+          <select id="qrSizeCm" class="input">
+            <option value="1">1 × 1</option>
+            <option value="1.5" selected>1.5 × 1.5 (افتراضي)</option>
+            <option value="2">2 × 2</option>
+          </select>
+        </div>
+        <div>
+          <label>عدد نسخ لكل منتج</label>
+          <input id="copiesEach" class="input" type="number" min="1" value="10"/>
+        </div>
+      </div>
+
+      <div id="labelPickList" class="list"></div>
+      <p class="hint">QR هو رابط. عند مسحه من جهاز غير مصرح سيظهر صفحة عامة فقط.</p>
+    </div>
+  </section>
+
+  <!-- Invoices -->
+  <section class="panel" id="tab-invoices">
+    <div class="card">
+      <div class="row">
+        <input id="invBillSearch" class="input" placeholder="بحث برقم الفاتورة أو اسم الزبون..." />
+      </div>
+      <div id="invoiceList" class="list"></div>
+    </div>
+  </section>
+
+  <!-- Moves -->
+  <section class="panel" id="tab-moves">
+    <div class="card">
+      <h3 class="h3">آخر الحركات</h3>
+      <div id="movesList" class="list"></div>
+    </div>
+  </section>
+
+  <!-- Settings -->
+  <section class="panel" id="tab-settings">
+    <div class="card">
+      <h3 class="h3">الإعدادات</h3>
+
+      <div class="grid2">
+        <div>
+          <label>عدد Snapshots الداخلية</label>
+          <input id="keepBackups" class="input" type="number" min="10" value="200"/>
+        </div>
+        <div>
+          <label>Snapshot بعد كل عملية</label>
+          <select id="autoSnapshot" class="input">
+            <option value="on" selected>تشغيل</option>
+            <option value="off">إيقاف</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <button class="btn" id="saveSettings">حفظ</button>
+        <button class="btn ghost" id="seedDemo">بيانات تجريبية</button>
+      </div>
+    </div>
+
+    <div class="card" id="pinBox">
+      <h3 class="h3">حماية PIN</h3>
+      <div class="grid2">
+        <div>
+          <label>PIN جديد</label>
+          <input id="pinNew1" class="input" inputmode="numeric" maxlength="8" placeholder="أدخل PIN (4 أرقام أو أكثر)">
+        </div>
+        <div>
+          <label>تأكيد PIN</label>
+          <input id="pinNew2" class="input" inputmode="numeric" maxlength="8" placeholder="أعد إدخال PIN">
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn" id="btnSavePin">حفظ PIN</button>
+        <button class="btn danger" id="btnLockNow">قفل الآن</button>
+        <span class="badge" id="pinState">الحالة: —</span>
+      </div>
+      <p class="hint">بعد تفعيل PIN، عند مسح QR من الكاميرا سيطلب PIN مرة واحدة ثم يبقى مفتوح 8 ساعات.</p>
+    </div>
+  </section>
+</main>
+
+<!-- Product Modal -->
+<dialog id="productModal" class="modal">
+  <div class="modal-head">
+    <h3 id="pmTitle" class="h3">مادة</h3>
+    <button class="iconbtn" id="pmClose">✕</button>
+  </div>
+  <div class="modal-body">
+    <div class="grid2">
+      <div>
+        <label>اسم المادة</label>
+        <input id="pName" class="input" placeholder="مثال: molicell li-ion 18650 2600mAh 3C"/>
+      </div>
+      <div>
+        <label>التصنيف</label>
+        <select id="pCat" class="input">
+          <option value="CEL">خلايا (CEL)</option>
+          <option value="LAB">Lead Acid (LAB)</option>
+          <option value="NIK">نيكل (NIK)</option>
+          <option value="BMS">BMS</option>
+          <option value="SHR">شرنك (SHR)</option>
+          <option value="WIR">أسلاك (WIR)</option>
+          <option value="CHG">شواحن (CHG)</option>
+          <option value="OTH">أخرى</option>
+        </select>
+      </div>
+      <div>
+        <label>مواصفة مختصرة (للكود)</label>
+        <input id="pSpec" class="input" placeholder="مثال: MOL18650 أو 12-16 أو D020"/>
+      </div>
+      <div>
+        <label>الوحدة</label>
+        <select id="pUnit" class="input">
+          <option value="pcs">قطعة</option>
+          <option value="m">متر</option>
+          <option value="roll">رول</option>
+          <option value="kg">كغم</option>
+        </select>
+      </div>
+      <div>
+        <label>التكلفة</label>
+        <input id="pCost" class="input" type="number" min="0" value="0"/>
+      </div>
+      <div>
+        <label>سعر البيع</label>
+        <input id="pPrice" class="input" type="number" min="0" value="0"/>
+      </div>
+      <div>
+        <label>الكمية</label>
+        <input id="pQty" class="input" type="number" value="0"/>
+      </div>
+      <div>
+        <label>حد النفاد</label>
+        <input id="pMin" class="input" type="number" value="0"/>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:10px;">
+      <button class="btn" id="genSku">توليد باركود</button>
+      <span class="badge">Barcode: <b id="pSku">—</b></span>
+    </div>
+
+    <div class="row" style="margin-top:10px;">
+      <button class="btn danger" id="deleteProduct">حذف</button>
+      <button class="btn" id="saveProduct">حفظ</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Action modal -->
+<dialog id="actionModal" class="modal">
+  <div class="modal-head">
+    <h3 class="h3">اختر العملية</h3>
+    <button class="iconbtn" id="actionClose">✕</button>
+  </div>
+  <div class="modal-body">
+    <div class="card" style="margin-top:0;">
+      <div class="meta">
+        <b id="actionName">—</b>
+        <span class="badge">Barcode: <b id="actionSku">—</b></span>
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px;">
+      <button class="btn" id="actionSale">بيع</button>
+      <button class="btn" id="actionIn">إدخال مخزون</button>
+      <button class="btn" id="actionOut">صرف/نقص</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Qty modal -->
+<dialog id="qtyModal" class="modal">
+  <div class="modal-head">
+    <h3 class="h3">إدخال الكمية</h3>
+    <button class="iconbtn" id="qtyClose">✕</button>
+  </div>
+  <div class="modal-body">
+    <div class="card" style="margin-top:0;">
+      <div class="meta">
+        <b id="qtyName">—</b>
+        <span class="badge">Barcode: <b id="qtySku">—</b></span>
+        <span class="badge">الكمية الحالية: <b id="qtyCurrent">—</b></span>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <input id="qtyInput" class="input" type="number" min="1" value="1">
+      <button class="btn" id="qtyConfirm">تأكيد</button>
+    </div>
+    <p class="hint" id="qtyHint"></p>
+  </div>
+</dialog>
+
+<script src="db.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
