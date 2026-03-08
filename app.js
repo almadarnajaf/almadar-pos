@@ -595,6 +595,21 @@ async function openActionPickerForSKU(sku){
   deepSkuPending = p.sku;
   $("actionName").textContent = p.name || "—";
   $("actionSku").textContent  = p.sku  || "—";
+
+  // ✅ أضف الكمية الحالية داخل نفس الصندوق
+const box = document.getElementById("actionSku")?.closest(".card");
+if (box && !document.getElementById("actionQtyLine")) {
+  const d = document.createElement("div");
+  d.id = "actionQtyLine";
+  d.className = "badge";
+  d.style.marginTop = "8px";
+  d.innerHTML = `الكمية الحالية: <b>${money(p.qty ?? 0)}</b> ${escapeHtml(unitName(p.unit))}`;
+  box.appendChild(d);
+} else if (document.getElementById("actionQtyLine")) {
+  document.getElementById("actionQtyLine").innerHTML =
+    `الكمية الحالية: <b>${money(p.qty ?? 0)}</b> ${escapeHtml(unitName(p.unit))}`;
+}
+  
   actionModal.showModal();
 }
 
