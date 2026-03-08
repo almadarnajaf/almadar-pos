@@ -16,7 +16,7 @@ const PIN_KEY = "almadar_pin_v1";
 const SESSION_KEY = "almadar_unlocked_v1";
 const UNLOCK_UNTIL_KEY = "almadar_unlocked_until_v1";
 
-// ✅ مهم: نخزن sku مؤقتاً حتى بعد إدخال PIN نعرض الخيارات الثلاث
+// ✅ نخزن sku مؤقتاً حتى بعد إدخال PIN نعرض الخيارات الثلاث
 const PENDING_SKU_KEY = "almadar_pending_sku";
 
 function getPin(){ return localStorage.getItem(PIN_KEY) || ""; }
@@ -35,23 +35,70 @@ function lockNow(){
   localStorage.removeItem(UNLOCK_UNTIL_KEY);
 }
 
-function showPublicLanding(){
+/* =========================================================
+   ✅ Public Landing (يعرض اسم المادة + سعر البيع + التكلفة إذا موجودة على نفس الجهاز)
+   ========================================================= */
+async function showPublicLanding(){
   const phones1 = "07838444634";
   const phones2 = "07771149446";
   const address = "النجف الاشرف - خان المخضر - شارع مدرسة فلسطين";
+
+  // احصل SKU من الرابط إن وجد
+  let sku = "";
+  try{
+    const u = new URL(location.href);
+    sku = (u.searchParams.get("sku") || "").trim().toUpperCase();
+  }catch(e){}
+
+  // حاول جلب بيانات المادة من قاعدة البيانات (إذا كانت على نفس الجهاز)
+  let p = null;
+  if(sku){
+    try{ p = await getProductBySKU(sku); }catch(e){}
+  }
+
+  const infoHtml = p ? `
+    <div style="margin-top:12px;border:1px solid #e5e7eb;border-radius:14px;padding:12px;background:#fff;">
+      <div style="font-size:15px;font-weight:900;color:#111827;margin-bottom:8px;">
+        ${escapeHtml(p.name || "—")}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;">
+        <span style="border:1px solid #e5e7eb;border-radius:999px;padding:6px 10px;font-size:12px;color:#374151;">
+          الباركود: <b>${escapeHtml(p.sku || sku)}</b>
+        </span>
+        <span style="border:1px solid #e5e7eb;border-radius:999px;padding:6px 10px;font-size:12px;color:#374151;">
+          سعر البيع: <b>${money(p.price || 0)}</b>
+        </span>
+        <span style="border:1px solid #e5e7eb;border-radius:999px;padding:6px 10px;font-size:12px;color:#374151;">
+          التكلفة: <b>${money(p.cost || 0)}</b>
+        </span>
+      </div>
+    </div>
+  ` : (sku ? `
+    <div style="margin-top:12px;border:1px solid #e5e7eb;border-radius:14px;padding:12px;background:#fff;">
+      <div style="font-size:13px;color:#b91c1c;">
+        لم يتم العثور على المادة ضمن مخزون هذا الجهاز.
+      </div>
+      <div style="font-size:12px;color:#6b7280;margin-top:6px;">
+        الباركود: <b>${escapeHtml(sku)}</b>
+      </div>
+    </div>
+  ` : "");
+
   document.body.innerHTML = `
     <div style="font-family:Arial,Tahoma;background:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:22px;">
       <div style="max-width:560px;width:100%;border:1px solid #e5e7eb;border-radius:18px;padding:20px;box-shadow:0 8px 30px rgba(0,0,0,.06);">
+        
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
           <div style="text-align:right;">
             <div style="font-size:26px;font-weight:800;color:#111827;">مركز المدار</div>
             <div style="margin-top:6px;font-size:13px;line-height:1.8;color:#374151;">
               هذا QR/باركود داخلي خاص بإدارة المخزون والمبيعات لدى <b>مركز المدار</b>.
-              <br/>إذا كنت زبوناً، فهذا الرمز غير مخصص للاستخدام العام.
             </div>
           </div>
           <div style="min-width:42px;height:42px;border-radius:14px;background:#fff7ed;border:1px solid #fde68a;display:flex;align-items:center;justify-content:center;font-size:20px;">🟨</div>
         </div>
+
+        ${infoHtml}
 
         <div style="margin-top:14px;border-top:1px dashed #e5e7eb;padding-top:14px;">
           <div style="display:grid;grid-template-columns:1fr;gap:10px;">
@@ -66,22 +113,28 @@ function showPublicLanding(){
             </div>
           </div>
 
-          <div style="margin-top:14px;font-size:12px;color:#6b7280;line-height:1.8;">
-            إذا كنت صاحب الجهاز، اضغط زر "أنا صاحب الجهاز" وأدخل PIN.
+          <div style="margin-top:12px;font-size:12px;color:#6b7280;line-height:1.8;">
+            إذا كنت صاحب الجهاز وتريد الدخول للنظام، افتح البرنامج وأدخل PIN.
           </div>
         </div>
 
         <div style="margin-top:16px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
-          <button id="ownerBtn" style="padding:10px 16px;border:1px solid #d97706;border-radius:12px;background:#f59e0b;cursor:pointer;font-weight:800;">أنا صاحب الجهاز</button>
-          <button id="pubClose" style="padding:10px 16px;border:1px solid #d1d5db;border-radius:12px;background:#fff;cursor:pointer;font-weight:700;">إغلاق</button>
+          <button id="pubClose"
+            style="padding:10px 16px;border:1px solid #d1d5db;border-radius:12px;background:#fff;cursor:pointer;font-weight:700;">
+            إغلاق
+          </button>
         </div>
+
       </div>
     </div>
   `;
+
   document.getElementById("pubClose").onclick = ()=> history.back();
-  document.getElementById("ownerBtn").onclick = ()=> location.href = location.pathname; // يرجع للبرنامج
 }
 
+/* =========================================================
+   PIN Gate
+   ========================================================= */
 function showPinGate(appHTML){
   const saved = getPin();
   document.body.innerHTML = `
@@ -123,7 +176,8 @@ function showPinGate(appHTML){
   `;
   const msg = (t)=> (document.getElementById("pinMsg").textContent = t);
 
-  document.getElementById("pinClose").onclick = ()=> showPublicLanding();
+  // ✅ لأن showPublicLanding صار async
+  document.getElementById("pinClose").onclick = async ()=> { await showPublicLanding(); };
 
   document.getElementById("pinOpen").onclick = ()=>{
     const p = (document.getElementById("pinInput").value||"").trim();
@@ -147,8 +201,10 @@ function showPinGate(appHTML){
   }
 }
 
-// ===== Gate by SKU =====
-(function gateAtStart(){
+/* =========================================================
+   Gate by SKU (مهم: async لأن showPublicLanding async)
+   ========================================================= */
+(async function gateAtStart(){
   const appHTML = document.body.innerHTML;
   let skuParam = "";
   try{
@@ -162,9 +218,9 @@ function showPinGate(appHTML){
 
     // إذا فتح من QR
     if(!getPin()){
-      // بدون PIN: اعتبره زبون -> صفحة عامة
+      // بدون PIN: اعتبره زبون -> صفحة عامة (مع معلومات المادة على نفس الجهاز)
       document.body.innerHTML = "";
-      showPublicLanding();
+      await showPublicLanding();
       return;
     }
     if(!isUnlocked()){
@@ -843,7 +899,7 @@ $("btnSavePin").onclick = ()=>{
   const p1 = ($("pinNew1").value||"").trim();
   const p2 = ($("pinNew2").value||"").trim();
   if(p1.length < 4){ alert("PIN لازم 4 أرقام أو أكثر"); return; }
-  if(!/^\d+$/.test(p1)){ alert("PIN أرقام فقط"); return; }
+  if(!/^\d+$/.test(p1)){ alert("PIN أرقام فقط."); return; }
   if(p1 !== p2){ alert("PIN غير متطابق"); return; }
   setPin(p1);
   alert("تم حفظ PIN ✅");
@@ -876,7 +932,6 @@ window.addEventListener("load", async ()=>{
     const sku = urlSku || pendingSku;
 
     if(sku){
-      // نظف الرابط (اختياري)
       if(urlSku){
         u.searchParams.delete("sku");
         history.replaceState({}, "", u.toString());
