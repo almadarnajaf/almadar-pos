@@ -1,22 +1,33 @@
-// ✅ لا Service Worker (حتى لا يصير كاش ويخرب عليك التحديث)
+/* =========================
+   Almadar POS - app.js (FULL)
+   - iPhone cache safe (no SW)
+   - PIN gate
+   - QR deep link actions (Sale / Stock In / Stock Out)
+   - Action modal shows: Price / Cost / Qty
+   - Sales search suggestions
+   - Professional A4 invoice (print/share)
+   - Invoices history + reprint
+   - Backup/Restore
+   ========================= */
+
+// ✅ Disable any Service Worker to stop iPhone caching issues
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.getRegistrations()
     .then((regs) => regs.forEach((r) => r.unregister()))
     .catch(()=>{});
 }
 
+// Helpers
 const $ = (id)=>document.getElementById(id);
 const money = (n)=>Number(n||0).toLocaleString("en-US");
 const nowStr = (ts)=> new Date(ts||Date.now()).toLocaleString("ar-IQ");
 const escapeHtml = (s)=> String(s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const unitName = (u)=>({pcs:"قطعة",m:"متر",roll:"رول",kg:"كغم"})[u]||"وحدة";
 
-// ===== PIN =====
+// ================= PIN =================
 const PIN_KEY = "almadar_pin_v1";
 const SESSION_KEY = "almadar_unlocked_v1";
 const UNLOCK_UNTIL_KEY = "almadar_unlocked_until_v1";
-
-// ✅ نخزن sku مؤقتاً حتى بعد إدخال PIN نعرض الخيارات الثلاث
 const PENDING_SKU_KEY = "almadar_pending_sku";
 
 function getPin(){ return localStorage.getItem(PIN_KEY) || ""; }
@@ -35,9 +46,7 @@ function lockNow(){
   localStorage.removeItem(UNLOCK_UNTIL_KEY);
 }
 
-/* =========================================================
-   ✅ Public Landing (اسم + بيع + تكلفة + كمية إذا موجودة على نفس الجهاز)
-   ========================================================= */
+// ================= Public Landing (Safari open from camera) =================
 async function showPublicLanding(){
   const phones1 = "07838444634";
   const phones2 = "07771149446";
@@ -88,7 +97,6 @@ async function showPublicLanding(){
   document.body.innerHTML = `
     <div style="font-family:Arial,Tahoma;background:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:22px;">
       <div style="max-width:560px;width:100%;border:1px solid #e5e7eb;border-radius:18px;padding:20px;box-shadow:0 8px 30px rgba(0,0,0,.06);">
-        
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
           <div style="text-align:right;">
             <div style="font-size:26px;font-weight:800;color:#111827;">مركز المدار</div>
@@ -113,10 +121,6 @@ async function showPublicLanding(){
               <div style="font-size:14px;font-weight:700;color:#111827;line-height:1.9;">${address}</div>
             </div>
           </div>
-
-          <div style="margin-top:12px;font-size:12px;color:#6b7280;line-height:1.8;">
-            إذا كنت صاحب الجهاز وتريد الدخول للنظام، افتح البرنامج وأدخل PIN.
-          </div>
         </div>
 
         <div style="margin-top:16px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
@@ -125,17 +129,13 @@ async function showPublicLanding(){
             إغلاق
           </button>
         </div>
-
       </div>
     </div>
   `;
-
   document.getElementById("pubClose").onclick = ()=> history.back();
 }
 
-/* =========================================================
-   PIN Gate
-   ========================================================= */
+// ================= PIN Gate =================
 function showPinGate(appHTML){
   const saved = getPin();
   document.body.innerHTML = `
@@ -175,6 +175,7 @@ function showPinGate(appHTML){
       </div>
     </div>
   `;
+
   const msg = (t)=> (document.getElementById("pinMsg").textContent = t);
 
   document.getElementById("pinClose").onclick = async ()=> { await showPublicLanding(); };
@@ -201,11 +202,10 @@ function showPinGate(appHTML){
   }
 }
 
-/* =========================================================
-   Gate by SKU (async لأن showPublicLanding async)
-   ========================================================= */
+// ================= Gate at Start =================
 (async function gateAtStart(){
   const appHTML = document.body.innerHTML;
+
   let skuParam = "";
   try{
     const u = new URL(location.href);
@@ -234,12 +234,12 @@ function showPinGate(appHTML){
   }
 })();
 
-// ===== App state =====
+// ================= App State =================
 let editingProduct = null;
 let cart = [];
 let labelSelected = new Map();
 
-// ===== Tabs =====
+// ================= Tabs =================
 function showTab(name){
   document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active", b.dataset.tab===name));
   document.querySelectorAll(".panel").forEach(p=>p.classList.remove("show"));
@@ -248,7 +248,7 @@ function showTab(name){
 }
 document.querySelectorAll(".tab").forEach(btn=> btn.addEventListener("click", ()=>showTab(btn.dataset.tab)));
 
-// ===== Parse QR link to SKU =====
+// ================= Parse QR =================
 function parseBarcodeToSKU(text){
   const raw = String(text||"").trim();
   if(!raw) return null;
@@ -260,9 +260,10 @@ function parseBarcodeToSKU(text){
   return raw.toUpperCase();
 }
 
-// ===== Inventory =====
+// ================= Inventory =================
 async function refreshInventory(){
-  const q = $("invSearch").value || "";
+  if(!$("invList")) return;
+  const q = $("invSearch")?.value || "";
   const list = await listProducts(q);
   const box = $("invList");
   box.innerHTML = "";
@@ -284,10 +285,11 @@ async function refreshInventory(){
     box.appendChild(el);
   });
 }
-$("invSearch").addEventListener("input", refreshInventory);
+$("invSearch")?.addEventListener("input", refreshInventory);
 
-// ===== Moves =====
+// ================= Moves =================
 async function refreshMoves(){
+  if(!$("movesList")) return;
   const moves = await listMoves(40);
   const box = $("movesList");
   box.innerHTML = "";
@@ -305,9 +307,9 @@ async function refreshMoves(){
   });
 }
 
-// ===== Product modal =====
+// ================= Product Modal =================
 const pm = $("productModal");
-$("pmClose").onclick = ()=> pm.close();
+$("pmClose")?.addEventListener("click", ()=> pm?.close());
 
 function openProductModal(p=null){
   editingProduct = p ? {...p} : {name:"",cat:"CEL",spec:"",unit:"pcs",cost:0,price:0,qty:0,minQty:0,sku:""};
@@ -321,19 +323,19 @@ function openProductModal(p=null){
   $("pQty").value  = editingProduct.qty||0;
   $("pMin").value  = editingProduct.minQty||0;
   $("pSku").textContent = editingProduct.sku||"—";
-  $("deleteProduct").style.display = p ? "inline-block" : "none";
-  pm.showModal();
+  if($("deleteProduct")) $("deleteProduct").style.display = p ? "inline-block" : "none";
+  pm?.showModal();
 }
 
-$("btnAddProduct").onclick = ()=> openProductModal(null);
-$("btnNewProduct2").onclick = ()=> openProductModal(null);
+$("btnAddProduct")?.addEventListener("click", ()=> openProductModal(null));
+$("btnNewProduct2")?.addEventListener("click", ()=> openProductModal(null));
 
-$("genSku").onclick = async ()=>{
+$("genSku")?.addEventListener("click", async ()=>{
   const sku = await generateSKU($("pCat").value, $("pSpec").value||"GEN");
   $("pSku").textContent = sku;
-};
+});
 
-$("saveProduct").onclick = async ()=>{
+$("saveProduct")?.addEventListener("click", async ()=>{
   const sku = $("pSku").textContent.trim().toUpperCase();
   if(!sku || sku==="—"){ alert("اضغط توليد باركود أولاً"); return; }
 
@@ -359,23 +361,24 @@ $("saveProduct").onclick = async ()=>{
   await saveProduct(p);
   await addMove({type:"PRODUCT_SAVE", sku:p.sku, note:`حفظ: ${p.name}`});
   await internalSnapshot("product_save");
-  pm.close();
+  pm?.close();
   await refreshAll();
-};
+});
 
-$("deleteProduct").onclick = async ()=>{
+$("deleteProduct")?.addEventListener("click", async ()=>{
   if(!editingProduct?.id) return;
   if(!confirm("حذف المادة؟")) return;
   await deleteProductById(editingProduct.id);
   await addMove({type:"PRODUCT_DELETE", sku:editingProduct.sku, note:`حذف: ${editingProduct.name}`});
   await internalSnapshot("product_delete");
-  pm.close();
+  pm?.close();
   await refreshAll();
-};
+});
 
-// ===== Labels =====
+// ================= Labels =================
 async function refreshLabelPick(){
-  const q = $("labelSearch").value || "";
+  if(!$("labelPickList")) return;
+  const q = $("labelSearch")?.value || "";
   const list = await listProducts(q);
   const box = $("labelPickList");
   box.innerHTML = "";
@@ -401,14 +404,14 @@ async function refreshLabelPick(){
     box.appendChild(el);
   });
 }
-$("labelSearch").addEventListener("input", refreshLabelPick);
+$("labelSearch")?.addEventListener("input", refreshLabelPick);
 
-$("printSheet").onclick = ()=>{
+$("printSheet")?.addEventListener("click", ()=>{
   const items = [...labelSelected.values()];
   if(!items.length){ alert("اختر منتجات أولاً"); return; }
 
-  const sizeCm = Number($("qrSizeCm").value||1.5);
-  const copies = Math.max(1, Number($("copiesEach").value || 10));
+  const sizeCm = Number($("qrSizeCm")?.value||1.5);
+  const copies = Math.max(1, Number($("copiesEach")?.value || 10));
   const cmToPx = (cm)=> Math.round(cm * 37.7952755906);
   const qrPx = cmToPx(sizeCm);
   const cellPx = qrPx + 14;
@@ -422,26 +425,30 @@ $("printSheet").onclick = ()=>{
         "https://api.qrserver.com/v1/create-qr-code/?size=" +
         qrPx + "x" + qrPx +
         "&ecc=M&data=" + encodeURIComponent(deep);
-      blocks += '<div class="cell"><img src="' + qrUrl + '" alt="QR"></div>';
+      blocks += `<div class="cell"><img src="${qrUrl}" alt="QR"></div>`;
     }
   }
 
   const html =
-    '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">' +
-    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<title>ملصقات QR</title>' +
-    '<style>@page{size:A4;margin:8mm;}body{font-family:Arial;margin:0}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(' +
-      cellPx + 'px,1fr));gap:6px}.cell{width:' + cellPx + 'px;border:1px dashed #ccc;padding:6px;text-align:center}img{width:' +
-      qrPx + 'px;height:' + qrPx + 'px;image-rendering:pixelated}</style>' +
-    '</head><body><div class="grid">' + blocks + '</div>' +
-    '<script>window.onload=function(){setTimeout(function(){window.print();},300);};<\/script>' +
-    '</body></html>';
+    `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
+     <meta name="viewport" content="width=device-width,initial-scale=1">
+     <title>ملصقات QR</title>
+     <style>
+      @page{size:A4;margin:8mm;}
+      body{font-family:Arial;margin:0}
+      .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(${cellPx}px,1fr));gap:6px}
+      .cell{width:${cellPx}px;border:1px dashed #ccc;padding:6px;text-align:center}
+      img{width:${qrPx}px;height:${qrPx}px;image-rendering:pixelated}
+     </style></head><body>
+     <div class="grid">${blocks}</div>
+     <script>window.onload=function(){setTimeout(function(){window.print();},300);};<\/script>
+     </body></html>`;
 
   const w = window.open("", "_blank");
   w.document.open(); w.document.write(html); w.document.close();
-};
+});
 
-// ===== Cart (simple) =====
+// ================= Cart =================
 function renderCart(){
   const box = $("cartList");
   if(!box) return;
@@ -503,15 +510,95 @@ async function addProductToCartBySKU(sku, qty=1){
   renderCart(); calcTotals();
 }
 
-// ===== Deep link action + qty =====
+// ================= Sale suggestions (search field) =================
+let suggestTimer = null;
+
+async function refreshSaleSuggest(){
+  const q = ($("saleQuery")?.value || "").trim();
+  const box = $("saleSuggest");
+  if(!box) return;
+  box.innerHTML = "";
+  if(!q) return;
+
+  // Try direct SKU first
+  const skuTry = parseBarcodeToSKU(q);
+  const pTry = await getProductBySKU(skuTry);
+  if(pTry){
+    const el = document.createElement("div");
+    el.className="item";
+    el.innerHTML = `
+      <div class="meta">
+        <b>${escapeHtml(pTry.name)}</b>
+        <div class="badge">باركود: ${escapeHtml(pTry.sku)} • بيع:${money(pTry.price)} • متوفر:${money(pTry.qty||0)}</div>
+      </div>
+      <button class="btn">إضافة</button>
+    `;
+    el.querySelector("button").onclick = async ()=>{
+      await addProductToCartBySKU(pTry.sku, 1);
+      $("saleQuery").value=""; box.innerHTML="";
+    };
+    box.appendChild(el);
+    return;
+  }
+
+  // Search by name/sku
+  const list = await listProducts(q);
+  list.slice(0,10).forEach(p=>{
+    const el = document.createElement("div");
+    el.className="item";
+    el.innerHTML = `
+      <div class="meta">
+        <b>${escapeHtml(p.name)}</b>
+        <div class="badge">${escapeHtml(p.sku)} • بيع:${money(p.price)} • متوفر:${money(p.qty||0)}</div>
+      </div>
+      <button class="btn">إضافة</button>
+    `;
+    el.querySelector("button").onclick = async ()=>{
+      await addProductToCartBySKU(p.sku, 1);
+      $("saleQuery").value=""; box.innerHTML="";
+    };
+    box.appendChild(el);
+  });
+}
+
+$("saleQuery")?.addEventListener("input", ()=>{
+  clearTimeout(suggestTimer);
+  suggestTimer = setTimeout(refreshSaleSuggest, 120);
+});
+
+$("saleAddBtn")?.addEventListener("click", async ()=>{
+  const q = ($("saleQuery")?.value || "").trim();
+  if(!q) return;
+  const sku = parseBarcodeToSKU(q);
+  const p = await getProductBySKU(sku);
+  if(p){
+    await addProductToCartBySKU(p.sku, 1);
+    $("saleQuery").value=""; $("saleSuggest").innerHTML="";
+    return;
+  }
+  const list = await listProducts(q);
+  if(list.length){
+    await addProductToCartBySKU(list[0].sku, 1);
+    $("saleQuery").value=""; $("saleSuggest").innerHTML="";
+  } else {
+    alert("لم يتم العثور على مادة");
+  }
+});
+
+$("clearCart")?.addEventListener("click", ()=>{
+  if(!cart.length) return;
+  if(!confirm("تفريغ السلة؟")) return;
+  cart=[]; renderCart(); calcTotals();
+});
+
+// ================= QR Action modal + Qty modal =================
 const actionModal = $("actionModal");
-$("actionClose")?.addEventListener("click", ()=> actionModal.close());
+$("actionClose")?.addEventListener("click", ()=> actionModal?.close());
 const qtyModal = $("qtyModal");
-$("qtyClose")?.addEventListener("click", ()=> qtyModal.close());
+$("qtyClose")?.addEventListener("click", ()=> qtyModal?.close());
 
 let deepSkuPending=null, qtyAction="sale", pendingProduct=null;
 
-// ✅ هنا التعديل: داخل نفس نافذة (اختر العملية) نضيف السعر/التكلفة + الكمية
 async function openActionPickerForSKU(sku){
   const p = await getProductBySKU(sku);
   if(!p){ alert("باركود غير موجود: "+sku); return; }
@@ -520,9 +607,9 @@ async function openActionPickerForSKU(sku){
   $("actionName").textContent = p.name || "—";
   $("actionSku").textContent  = p.sku  || "—";
 
+  // ✅ Add price/cost + qty INSIDE action modal (مثل طلبك)
   const box = document.getElementById("actionSku")?.closest(".card");
 
-  // سطر سعر/تكلفة
   let priceLine = document.getElementById("actionPriceLine");
   if(!priceLine && box){
     priceLine = document.createElement("div");
@@ -535,7 +622,6 @@ async function openActionPickerForSKU(sku){
     priceLine.innerHTML = `سعر البيع: <b>${money(p.price || 0)}</b> • التكلفة: <b>${money(p.cost || 0)}</b>`;
   }
 
-  // سطر الكمية
   let qtyLine = document.getElementById("actionQtyLine");
   if(!qtyLine && box){
     qtyLine = document.createElement("div");
@@ -548,7 +634,7 @@ async function openActionPickerForSKU(sku){
     qtyLine.innerHTML = `الكمية الحالية: <b>${money(p.qty ?? 0)}</b> ${escapeHtml(unitName(p.unit))}`;
   }
 
-  actionModal.showModal();
+  actionModal?.showModal();
 }
 
 async function openQtyForSKU(sku, action){
@@ -556,6 +642,7 @@ async function openQtyForSKU(sku, action){
   const p = await getProductBySKU(sku);
   if(!p){ alert("باركود غير موجود"); return; }
   pendingProduct = p;
+
   $("qtyName").textContent = p.name||"—";
   $("qtySku").textContent = p.sku||"—";
   $("qtyCurrent").textContent = (p.qty ?? 0);
@@ -564,61 +651,386 @@ async function openQtyForSKU(sku, action){
     qtyAction==="sale" ? "سيتم إضافة الكمية إلى السلة (بيع)." :
     qtyAction==="in" ? "سيتم زيادة المخزون بهذه الكمية." :
     "سيتم إنقاص المخزون بهذه الكمية.";
-  qtyModal.showModal();
+  qtyModal?.showModal();
 }
 
-$("actionSale")?.addEventListener("click", async ()=>{ actionModal.close(); await openQtyForSKU(deepSkuPending,"sale"); });
-$("actionIn")?.addEventListener("click",   async ()=>{ actionModal.close(); await openQtyForSKU(deepSkuPending,"in"); });
-$("actionOut")?.addEventListener("click",  async ()=>{ actionModal.close(); await openQtyForSKU(deepSkuPending,"out"); });
+$("actionSale")?.addEventListener("click", async ()=>{ actionModal?.close(); await openQtyForSKU(deepSkuPending,"sale"); });
+$("actionIn")?.addEventListener("click",   async ()=>{ actionModal?.close(); await openQtyForSKU(deepSkuPending,"in"); });
+$("actionOut")?.addEventListener("click",  async ()=>{ actionModal?.close(); await openQtyForSKU(deepSkuPending,"out"); });
 
 $("qtyConfirm")?.addEventListener("click", async ()=>{
   if(!pendingProduct) return;
   const qty = Number($("qtyInput").value||0);
   if(!Number.isFinite(qty) || qty<=0){ alert("أدخل كمية صحيحة"); return; }
+
   const p = await getProductBySKU(pendingProduct.sku);
   if(!p){ alert("المنتج لم يعد موجوداً"); return; }
 
   if(qtyAction==="sale"){
     await addProductToCartBySKU(p.sku, qty);
-    qtyModal.close();
+    qtyModal?.close();
     showTab("sales");
     return;
   }
+
   if(qtyAction==="in"){
     p.qty = Number(p.qty||0) + qty;
     await saveProduct(p);
     await addMove({type:"STOCK_IN", sku:p.sku, qty, note:`إدخال: ${p.name}`});
     await internalSnapshot("stock_in");
-    qtyModal.close();
+    qtyModal?.close();
     await refreshAll();
     alert("تم إدخال المخزون ✅");
     return;
   }
+
   if(qtyAction==="out"){
     if(Number(p.qty||0) < qty){ alert(`الكمية غير كافية\nالمتوفر: ${p.qty}`); return; }
     p.qty = Number(p.qty||0) - qty;
     await saveProduct(p);
     await addMove({type:"STOCK_OUT", sku:p.sku, qty, note:`صرف/نقص: ${p.name}`});
     await internalSnapshot("stock_out");
-    qtyModal.close();
+    qtyModal?.close();
     await refreshAll();
     alert("تم الصرف ✅");
     return;
   }
 });
 
-// ===== Settings =====
+// ================= Invoice (Professional A4) =================
+function renderInvoiceHTML_A4({ invoiceNo, customer, residence, ts, items, discount, payTypeLabel, note }) {
+  const centerName = "مركز المدار";
+  const phones = "07838444634  |  07771149446";
+  const address = "النجف الاشرف - خان المخضر - شارع مدرسة فلسطين";
+
+  const dateStr = nowStr(ts);
+  const safeItems = Array.isArray(items) ? items : [];
+  const disc = Number(discount || 0);
+
+  let subtotal = 0;
+  safeItems.forEach(it => subtotal += (Number(it.price||0) * Number(it.qty||0)));
+  const grand = Math.max(0, subtotal - disc);
+
+  const rows = safeItems.map((it, i) => {
+    const qty = Number(it.qty||0);
+    const price = Number(it.price||0);
+    const lineTotal = qty * price;
+    return `
+      <tr>
+        <td class="c">${i + 1}</td>
+        <td class="name">${escapeHtml(it.name || "")}</td>
+        <td class="c">${money(qty)}</td>
+        <td class="c">${money(price)}</td>
+        <td class="c">${money(lineTotal)}</td>
+      </tr>
+    `;
+  }).join("");
+
+  return `
+  <div class="inv">
+    <style>
+      @page { size: A4; margin: 12mm; }
+      body { margin:0; background:#fff; color:#111; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .inv { font-family: Arial, Tahoma; font-size: 12pt; line-height: 1.6; }
+      .wrap { padding: 10mm; }
+
+      .header {
+        display:flex; justify-content:space-between; align-items:flex-start; gap:12px;
+        border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 12px;
+      }
+      .brand { text-align:right; }
+      .brand .title { font-size: 22pt; font-weight: 900; }
+      .brand .sub { font-size: 10.5pt; color:#444; margin-top: 4px; }
+
+      .invBox {
+        min-width: 240px;
+        border: 1px solid #111;
+        border-radius: 10px;
+        padding: 10px 12px;
+      }
+      .invBox .row { display:flex; justify-content:space-between; gap:10px; margin: 4px 0; font-size: 11pt; }
+      .invBox .k { color:#333; }
+      .invBox .v { font-weight: 900; }
+
+      .infoGrid{
+        display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0 12px 0;
+      }
+      .card{
+        border: 1px solid #cfd4da; border-radius: 10px; padding: 10px 12px;
+        background: #fafafa;
+      }
+      .card h4{ margin:0 0 6px 0; font-size: 11pt; color:#111; }
+      .kv{ display:flex; justify-content:space-between; gap:10px; margin: 3px 0; font-size: 11pt; }
+      .kv .k{ color:#444; }
+      .kv .v{ font-weight: 900; }
+
+      table { width:100%; border-collapse:collapse; margin-top: 6px; font-size: 11pt; }
+      th, td { border: 1px solid #111; padding: 8px 6px; }
+      th { background:#f3f4f6; font-weight: 900; text-align:center; }
+      td.c { text-align:center; white-space:nowrap; }
+      td.name { text-align:right; }
+      tbody tr:nth-child(even){ background:#fcfcfc; }
+
+      .totalsWrap { display:flex; justify-content:flex-end; margin-top: 10px; }
+      .totals {
+        width: 90mm;
+        border: 1px solid #111;
+        border-radius: 10px;
+        overflow:hidden;
+      }
+      .totals .trow{
+        display:flex; justify-content:space-between; padding: 8px 10px; font-size: 11pt;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      .totals .trow:last-child{ border-bottom:none; }
+      .totals .k{ color:#333; }
+      .totals .v{ font-weight: 900; }
+      .totals .grand{ background:#111; color:#fff; }
+      .totals .grand .k, .totals .grand .v{ color:#fff; }
+
+      .note { margin-top: 10px; border: 1px dashed #999; border-radius: 10px; padding: 8px 10px; font-size: 11pt; }
+      .note b{ font-weight:900; }
+
+      .footer {
+        position: fixed;
+        bottom: 10mm; left: 12mm; right: 12mm;
+        border-top: 1px solid #111;
+        padding-top: 6px;
+        display:flex; justify-content:space-between; gap:10px;
+        font-size: 10.5pt;
+      }
+      .footer .left{ direction:ltr; text-align:left; }
+      .footer .right{ text-align:right; color:#111; }
+
+      .no-print { margin-top: 12px; text-align:center; }
+      .btn {
+        padding:10px 14px; border:1px solid #ccc; border-radius:10px; background:#fff;
+        cursor:pointer; font-weight:800;
+      }
+      .btn.primary { border-color:#111; }
+      @media print { .no-print{ display:none !important; } .wrap{ padding:0 } }
+    </style>
+
+    <div class="wrap">
+      <div class="header">
+        <div class="brand">
+          <div class="title">${centerName}</div>
+          <div class="sub">فاتورة مبيعات رسمية</div>
+        </div>
+
+        <div class="invBox">
+          <div class="row"><span class="k">رقم الفاتورة</span><span class="v">${escapeHtml(invoiceNo || "—")}</span></div>
+          <div class="row"><span class="k">التاريخ</span><span class="v">${escapeHtml(dateStr)}</span></div>
+          <div class="row"><span class="k">طريقة الدفع</span><span class="v">${escapeHtml(payTypeLabel || "—")}</span></div>
+        </div>
+      </div>
+
+      <div class="infoGrid">
+        <div class="card">
+          <h4>بيانات الزبون</h4>
+          <div class="kv"><span class="k">اسم الزبون</span><span class="v">${escapeHtml(customer || "—")}</span></div>
+          <div class="kv"><span class="k">محل السكن</span><span class="v">${escapeHtml(residence || "—")}</span></div>
+        </div>
+
+        <div class="card">
+          <h4>معلومات إضافية</h4>
+          <div class="kv"><span class="k">عدد المواد</span><span class="v">${money(safeItems.length)}</span></div>
+          <div class="kv"><span class="k">الخصم</span><span class="v">${money(disc)}</span></div>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width:10mm">#</th>
+            <th>المادة</th>
+            <th style="width:20mm">الكمية</th>
+            <th style="width:28mm">سعر الوحدة</th>
+            <th style="width:30mm">الإجمالي</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows || `<tr><td class="c" colspan="5">لا توجد مواد</td></tr>`}
+        </tbody>
+      </table>
+
+      <div class="totalsWrap">
+        <div class="totals">
+          <div class="trow"><span class="k">الإجمالي</span><span class="v">${money(subtotal)}</span></div>
+          <div class="trow"><span class="k">الخصم</span><span class="v">${money(disc)}</span></div>
+          <div class="trow grand"><span class="k">الصافي</span><span class="v">${money(grand)}</span></div>
+        </div>
+      </div>
+
+      ${note ? `<div class="note">ملاحظة: <b>${escapeHtml(note)}</b></div>` : ""}
+
+      <div class="footer">
+        <div class="left">${phones}</div>
+        <div class="right">${address}</div>
+      </div>
+
+      <div class="no-print">
+        <button id="btnPrintNow" class="btn primary">طباعة</button>
+        <button id="btnSharePdf" class="btn">مشاركة PDF</button>
+        <button id="btnBackNow" class="btn">رجوع</button>
+        <div style="margin-top:6px;font-size:11px;color:#444;">
+          على iPhone: من شاشة الطباعة اختر Share / Save to Files لحفظ PDF.
+        </div>
+      </div>
+    </div>
+  </div>
+  `;
+}
+
+function showInvoiceScreen(sale){
+  const appHTML = document.body.innerHTML;
+  const html = renderInvoiceHTML_A4(sale);
+  document.body.innerHTML = html;
+
+  document.getElementById("btnPrintNow").onclick = ()=> window.print();
+  document.getElementById("btnSharePdf").onclick = ()=> window.print();
+  document.getElementById("btnBackNow").onclick = ()=>{ document.body.innerHTML = appHTML; location.reload(); };
+}
+
+// ================= Checkout (Sale) =================
+$("checkout")?.addEventListener("click", async ()=>{
+  if(!cart.length){ alert("السلة فارغة"); return; }
+
+  // check stock
+  for(const it of cart){
+    const p = await getProductBySKU(it.sku);
+    if(!p){ alert("مادة غير موجودة"); return; }
+    if(Number(p.qty||0) < it.qty){
+      alert(`الكمية غير كافية لـ ${p.name}\nالمتوفر: ${p.qty}`);
+      return;
+    }
+  }
+
+  const discount = Number($("discount")?.value||0);
+  const payType  = $("payType")?.value || "cash";
+  const payTypeLabel = (payType==="cash"?"نقدي":payType==="credit"?"أجل":"تحويل");
+  const customer = ($("customerName")?.value || "").trim();
+  const residence = ($("customerResidence")?.value || "").trim();
+  const note = ($("invoiceNote")?.value || "").trim();
+  const ts = Date.now();
+  const invoiceNo = await nextInvoiceNo();
+
+  // apply stock out
+  for(const it of cart){
+    const p = await getProductBySKU(it.sku);
+    p.qty = Number(p.qty||0) - it.qty;
+    await saveProduct(p);
+    await addMove({type:"SALE_OUT", sku:it.sku, qty:it.qty, note:`بيع: ${it.name}`});
+  }
+
+  const sale = {
+    invoiceNo, ts, customer, residence,
+    payTypeLabel, discount, note,
+    items: cart.map(x=>({ sku:x.sku, name:x.name, price:x.price, cost:x.cost, qty:x.qty }))
+  };
+
+  await addSale(sale);
+  await addMove({type:"SALE_DONE", note:`إتمام بيع (فاتورة ${invoiceNo})`});
+  await internalSnapshot("sale_done");
+
+  // reset UI
+  cart=[]; renderCart();
+  if($("discount")) $("discount").value="0";
+  if($("invoiceNote")) $("invoiceNote").value="";
+  if($("saleQuery")) $("saleQuery").value="";
+  if($("saleSuggest")) $("saleSuggest").innerHTML="";
+  calcTotals();
+
+  await refreshAll();
+  showInvoiceScreen(sale);
+});
+
+// ================= Invoices =================
+async function refreshInvoices(){
+  const box = $("invoiceList");
+  if(!box) return;
+
+  const q = ($("invBillSearch")?.value||"").trim().toLowerCase();
+  const sales = await listSales(150);
+
+  box.innerHTML = "";
+  sales
+    .filter(s=>{
+      const inv = String(s.invoiceNo||"").toLowerCase();
+      const name = String(s.customer||"").toLowerCase();
+      return !q || inv.includes(q) || name.includes(q);
+    })
+    .forEach(sale=>{
+      const el = document.createElement("div");
+      el.className="item";
+      el.innerHTML = `
+        <div class="meta">
+          <b>فاتورة رقم: ${sale.invoiceNo||"—"}</b>
+          <div class="badge">${escapeHtml(nowStr(sale.ts))} • ${escapeHtml(sale.customer||"—")}</div>
+        </div>
+        <button class="btn">طباعة</button>
+      `;
+      el.querySelector("button").onclick = ()=> showInvoiceScreen(sale);
+      box.appendChild(el);
+    });
+}
+$("invBillSearch")?.addEventListener("input", refreshInvoices);
+
+// ================= Backup / Restore =================
+$("btnExport")?.addEventListener("click", ()=> downloadBackupFile());
+$("restoreFile")?.addEventListener("change", async (e)=>{
+  const file = e.target.files?.[0];
+  if(!file) return;
+  try{
+    const data = JSON.parse(await file.text());
+    if(!confirm("سيتم استبدال البيانات الحالية بالكامل. متابعة؟")) return;
+    await restoreFromData(data);
+    await refreshAll();
+    alert("تم الاسترجاع ✅");
+  }catch(err){
+    alert("فشل الاسترجاع: " + (err?.message || "خطأ"));
+  }finally{
+    e.target.value="";
+  }
+});
+
+// ================= Settings =================
 async function loadSettings(){
   if($("keepBackups")) $("keepBackups").value = await getSetting("keepBackups",200);
   if($("autoSnapshot")) $("autoSnapshot").value= await getSetting("autoSnapshot","on");
   refreshPinState();
 }
+
+$("saveSettings")?.addEventListener("click", async ()=>{
+  await setSetting("keepBackups", Math.max(10, Number($("keepBackups")?.value||200)));
+  await setSetting("autoSnapshot", $("autoSnapshot")?.value || "on");
+  await internalSnapshot("settings_save");
+  alert("تم الحفظ ✅");
+});
+
+$("seedDemo")?.addEventListener("click", async ()=>{
+  const demo = [
+    {name:"molicell li-ion 18650 2600mAh",cat:"CEL",spec:"MOL18650",unit:"pcs",cost:2500,price:3500,qty:100,minQty:20},
+    {name:"Lead Acid Battery 12V 16Ah",cat:"LAB",spec:"12-16",unit:"pcs",cost:20000,price:28000,qty:5,minQty:1}
+  ];
+  for(const d of demo){
+    const sku = await generateSKU(d.cat, d.spec);
+    await saveProduct({...d, sku});
+    await addMove({type:"SEED", sku, note:`إضافة: ${d.name}`});
+  }
+  await internalSnapshot("seed_demo");
+  await refreshAll();
+  alert("تمت إضافة بيانات تجريبية ✅");
+});
+
+// PIN controls inside settings (existing UI)
 function refreshPinState(){
   if(!$("pinState")) return;
   const has = !!getPin();
   const open = isUnlocked();
   $("pinState").textContent = "الحالة: " + (has ? (open ? "مفعل (مفتوح)" : "مفعل (مقفول)") : "غير مفعل");
 }
+
 $("btnSavePin")?.addEventListener("click", ()=>{
   const p1 = ($("pinNew1")?.value||"").trim();
   const p2 = ($("pinNew2")?.value||"").trim();
@@ -629,25 +1041,29 @@ $("btnSavePin")?.addEventListener("click", ()=>{
   alert("تم حفظ PIN ✅");
   refreshPinState();
 });
+
 $("btnLockNow")?.addEventListener("click", ()=>{
   lockNow();
   alert("تم القفل ✅");
   refreshPinState();
 });
 
-// ===== Init =====
+// ================= Refresh all =================
 async function refreshAll(){
   await loadSettings();
   await refreshInventory();
   await refreshMoves();
   await refreshLabelPick();
-  renderCart(); calcTotals();
+  await refreshInvoices();
+  renderCart();
+  calcTotals();
 }
 
+// ================= On load =================
 window.addEventListener("load", async ()=>{
   await refreshAll();
 
-  // ✅ فتح نافذة الخيارات الثلاث عند وجود SKU (حتى بعد PIN)
+  // ✅ If opened with sku (camera QR), open action picker (even after PIN)
   try{
     const u = new URL(location.href);
     const urlSku = (u.searchParams.get("sku")||"").trim().toUpperCase();
@@ -655,6 +1071,7 @@ window.addEventListener("load", async ()=>{
     const sku = urlSku || pendingSku;
 
     if(sku){
+      // clean URL
       if(urlSku){
         u.searchParams.delete("sku");
         history.replaceState({}, "", u.toString());
